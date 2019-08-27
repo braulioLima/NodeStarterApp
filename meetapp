@@ -1,0 +1,309 @@
+#!/bin/env bash
+
+#################### Header ###################################################
+#									      																											#
+#  Description:								      																					#
+#		This script create the MeetApp Scheletor app			      									#
+#									      																											#
+#  Author:								      																							#
+#		Bráulio F. Lima							      																				#
+#  Date:								      																								#
+#		26/08/2019							      																						#
+#  Changelog:								      																						#
+#																																							#
+#		0.5 - Initial version						      																		#
+#																																							#
+###############################################################################
+
+################## Tests ######################################################
+
+# Teste if have connection
+wget -q  --spider "www.google.com"  || {  \
+	echo 'Please connect to internet...'; \
+	exit 1;
+}
+
+# Testa se tem o nodejs
+[[ -z $(node --version 2>&-)  ]] && { \
+	echo 'Please install nodejs...';  \
+	exit 1;
+}
+
+# Testa se tem o yarn
+[[ -z $(yarn --version 2>&-) ]]  && { \
+	echo 'Please install yarn...';      \
+	exit 1;
+}
+
+############### Functions ###################################################
+
+function func_rootFiles () {
+
+#.editorconfig
+/bin/tee "${1}/.editorconfig" <<- EOF
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+EOF
+
+#.eslintrc.js
+/bin/tee "${1}/.eslintrc.js" <<- EOF
+module.exports = {
+  env: {
+    es6: true,
+    node: true,
+  },
+  extends: [
+    'airbnb-base',
+    'prettier'
+  ],
+  plugins: [
+    'prettier'
+  ],
+  globals: {
+    Atomics: 'readonly',
+    SharedArrayBuffer: 'readonly',
+  },
+  parserOptions: {
+    ecmaVersion: 2018,
+    sourceType: 'module',
+  },
+  rules: {
+    "prettier/prettier": "error",
+    "class-methods-use-this": "off",
+    "no-param-reassign": "off",
+    "camelcase": "off",
+    "no-unused-vars": ["error",{ "argsIgnorePattern": "next" }]
+  },
+};
+
+EOF
+
+#.gitignore
+/bin/tee "${1}/.gitignore" <<- EOF
+node_modules/
+EOF
+
+# nodemon.json
+/bin/tee "${1}/nodemon.json" <<- EOF
+{
+  "execMap": {
+    "js": "sucrase-node"
+  }
+}
+
+EOF
+
+# .prettierrc
+/bin/tee "${1}/.prettierrc" <<- EOF
+{
+  "singleQuote": true,
+  "trailingComma": "es5"
+}
+
+EOF
+
+#.sequelizerc
+/bin/tee "${1}/.sequelizerc" <<- EOF
+const { resolve } = require('path');
+
+module.exports = {
+  config: resolve(__dirname, 'src', 'config','database.js'),
+  'models-path': resolve(__dirname, 'src', 'app','models'),
+  'migrations-path': resolve(__dirname, 'src', 'database','migrations'),
+  'seeders-path': resolve(__dirname, 'src', 'database','seeds'),
+};
+
+EOF
+
+# package.json
+/bin/tee "${1}/package.json" <<- EOF
+{
+  "name": "Meetapp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+	"scripts": {
+    "dev": "nodemon src/server.js"
+  }
+}
+EOF
+
+return 0
+
+}
+
+function func_srcRootFiles () {
+
+# src/app.js
+/bin/tee "${1}/app.js" <<- EOF
+/* This file define the application sctructure
+ * This application use sucrase-node to use syntax import-from
+ */
+import express from 'express';
+import routes from './routes';
+
+import './database';
+
+class App {
+  constructor() {
+    this.server = express();
+    this.middlewares();
+    this.routes();
+  }
+
+  middlewares() {
+    this.server.use(express.json());
+  }
+
+  routes() {
+    this.server.use(routes);
+  }
+}
+
+export default new App().server;
+
+EOF
+
+
+# src/routes.js
+/bin/tee "${1}/routes.js" <<- EOF
+// File use to define routes
+import { Router } from 'express';
+
+//import UserController from './app/controllers/UserController';
+//import SessionController from './app/controllers/SessionController';
+
+//import authMiddleware from './app/middlewares/auth';
+
+const routes = new Router();
+
+//routes.post('/sessions', SessionController.store);
+//routes.post('/users', UserController.store);
+
+// middleware de verificação de autenticação
+//routes.use(authMiddleware);
+//routes.put('/users', UserController.update);
+
+export default routes;
+
+EOF
+
+# src/server.js
+/bin/tee "${1}/server.js" <<- EOF
+// This file define the server
+import app from './app';
+
+app.listen(3333);
+
+EOF
+
+return 0
+
+}
+
+function func_CreateFileAuthConfig () {
+	/bin/tee  "$1" <<- EOF
+	export default {
+  	secret: 'f29618255c309de4469993cce24286ea',
+  	expiresIn: '7d',
+	};
+EOF
+	return 0
+}
+
+function func_CreateDatabaseJS () {
+	/bin/tee "$1" <<- EOF
+
+	module.exports = {
+  	dialect: 'postgres',
+  	host: 'localhost',
+  	username: 'postgres',
+  	password: 'docker',
+  	database: 'gobarber',
+  	define: {
+    	timestamps: true,
+    	underscored: true,
+    	underscoredAll: true,
+  	},
+	};
+
+EOF
+}
+
+function fun_databaseIndexJS () {
+	/bin/tee "$1" <<- EOF
+import Sequelize from 'sequelize';
+import dbConfig from '../config/database';
+
+//import User from '../app/models/User';
+
+const models = [User];
+
+class Database {
+  constructor() {
+    this.init();
+  }
+
+  init() {
+    this.connection = new Sequelize(dbConfig);
+    models.map(model => model.init(this.connection));
+  }
+}
+
+export default new Database();
+
+EOF
+	return 0
+}
+
+############### Main ########################################################
+
+appName=${appName:-"Meetapp"}
+baseDir=${baseDir:-"$(pwd)/${appName}"}
+codeTree=${codeTree:-"${baseDir}/src"}
+
+[[ -d ${baseDir} ]] && { \
+	echo "Removendo diretorio"; \
+	rm -rf ${baseDir};  \
+}
+
+for paste_0 in "app" "config" "database"; do
+	dir="${codeTree}/${paste_0}"
+	case $paste_0 in
+		app)
+			for paste_01 in "models" "controllers" "middlewares"; do
+				[[ -d "${dir}/${paste_01}" ]] || mkdir -pv "${dir}/${paste_01}"
+			done
+		;;
+		config)
+				[[ -d "${dir}" ]] || mkdir -pv "${dir}"
+
+				for file in "auth.js" "database.js"; do 
+						
+						case $file in
+							
+							auth.js) [[ -f "${dir}/${file}" ]] || func_CreateFileAuthConfig "${dir}/${file}";;
+							database.js) [[ -f "${dir}/${file}" ]] ||  func_CreateDatabaseJS "${dir}/${file}" ;;
+							*);;
+						esac
+				done			
+		;;
+		database) 
+			mkdir -pv "${dir}/migrations";
+			[[ -f "${dir}/index.js" ]] || fun_databaseIndexJS "${dir}/index.js"
+		;;
+		*);;
+	esac
+done
+
+# Cria os arquivos app.js, routes.js, server.js
+func_srcRootFiles ${codeTree}
+func_rootFiles ${baseDir}
+ 
